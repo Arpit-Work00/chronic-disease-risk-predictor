@@ -67,7 +67,15 @@ source venv/bin/activate  # On Windows: venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-### Run Demo
+ 📌Data Source and Training Strategy
+
+This system was developed as a prototype to demonstrate an end-to-end Al-based chronic disease risk prediction pipeline.
+
+For development and testing purposes, a combination of publicly available clinical datasets and synthetically generated samples was used. Synthetic data was generated to simulate realistic distributions of clinical variables while preserving privacy and avoiding the use of real patient-identifiable information.
+
+Synthetic data was used strictly for demonstration and experimentation. In a real-world deployment, the model would be trained, validated, and calibrated using clinically collected datasets in collaboration with healthcare professionals.
+
+ ### Run Demo
 
 ```bash
 # Run the full demonstration
