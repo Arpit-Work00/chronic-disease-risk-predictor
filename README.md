@@ -1,6 +1,6 @@
 # AI-Based Risk Prediction System for Chronic Diseases
 
-[![Streamlit App](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://chronic-disease-risk-predictor.streamlit.app)
+[![Streamlit App](http://localhost:8501)
 
 ### 🚀 [Live Demo](https://chronic-disease-risk-predictor.streamlit.app) — Try the interactive risk prediction app!
 
