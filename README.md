@@ -291,8 +291,7 @@ predictor.load_model('models/diabetes_model.joblib')
 ## ⚠️ Disclaimer
 
 This risk prediction system is intended to **support clinical decision-making** and should **not replace medical judgment**. The predictions and recommendations provided are based on statistical models and should be interpreted by qualified healthcare professionals in the context of each patient's complete clinical picture.
-
-This prediction is generated for educational and decision-support purposes only and is not intended for clinical diagnosis.
+ This prediction is generated for educational and decision-support purposes only and is not intended for clinical diagnosis.
 ---
 
 ## 📧 Contact
