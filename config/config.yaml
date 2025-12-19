@@ -1,0 +1,126 @@
+# Chronic Disease Risk Prediction System
+# Configuration File
+
+data:
+  # Feature column definitions
+  demographic_features:
+    - age
+    - gender
+    - ethnicity
+  
+  vital_features:
+    - systolic_bp
+    - diastolic_bp
+    - heart_rate
+    - bmi
+  
+  laboratory_features:
+    - fasting_glucose
+    - hba1c
+    - total_cholesterol
+    - hdl_cholesterol
+    - ldl_cholesterol
+    - triglycerides
+    - creatinine
+    - egfr
+  
+  lifestyle_features:
+    - smoking_status
+    - alcohol_consumption
+    - physical_activity_level
+    - diet_quality_score
+  
+  medical_history_features:
+    - family_history_diabetes
+    - family_history_cvd
+    - family_history_kidney_disease
+    - hypertension_diagnosed
+    - previous_cardiovascular_event
+  
+  target_columns:
+    - diabetes_risk
+    - cvd_risk
+    - kidney_disease_risk
+
+  # Protected attributes for bias analysis
+  protected_attributes:
+    - age_group
+    - gender
+    - ethnicity
+
+preprocessing:
+  # Missing value imputation strategy
+  imputation_strategy:
+    numerical: "median"
+    categorical: "mode"
+  
+  # Outlier handling
+  outlier_method: "iqr"
+  outlier_threshold: 1.5
+  
+  # Normalization
+  scaling_method: "standard"  # Options: standard, minmax, robust
+
+model:
+  # Models to train
+  algorithms:
+    - logistic_regression
+    - random_forest
+    - xgboost
+    - lightgbm
+  
+  # Primary model for deployment
+  primary_model: "xgboost"
+  
+  # Cross-validation settings
+  cv_folds: 5
+  stratified: true
+  
+  # Hyperparameter grids
+  hyperparameters:
+    logistic_regression:
+      C: [0.01, 0.1, 1.0, 10.0]
+      penalty: ["l2"]
+      max_iter: [1000]
+    
+    random_forest:
+      n_estimators: [100, 200, 300]
+      max_depth: [5, 10, 15, null]
+      min_samples_split: [2, 5, 10]
+      min_samples_leaf: [1, 2, 4]
+    
+    xgboost:
+      n_estimators: [100, 200, 300]
+      max_depth: [3, 5, 7]
+      learning_rate: [0.01, 0.1, 0.2]
+      subsample: [0.8, 1.0]
+      colsample_bytree: [0.8, 1.0]
+    
+    lightgbm:
+      n_estimators: [100, 200, 300]
+      max_depth: [3, 5, 7]
+      learning_rate: [0.01, 0.1, 0.2]
+      num_leaves: [31, 63, 127]
+
+explainability:
+  # SHAP settings
+  shap_sample_size: 100
+  top_features_to_show: 5
+  
+  # Confidence interval settings
+  bootstrap_iterations: 100
+  confidence_level: 0.95
+
+risk_thresholds:
+  # Risk category boundaries
+  low: 0.2
+  moderate: 0.5
+  high: 0.8
+  # Above 0.8 is "Very High"
+
+output:
+  # Prediction output settings
+  include_confidence_interval: true
+  include_feature_contributions: true
+  include_recommendations: true
+  decimal_precision: 4
