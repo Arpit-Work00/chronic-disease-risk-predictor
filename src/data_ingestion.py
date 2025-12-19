@@ -276,10 +276,70 @@ class DataIngestion:
         data['creatinine'] = (np.random.normal(1.0, 0.3, n_samples) + kidney_risk_score * 1.5 + age_factor * 0.3).clip(0.5, 8.0)
         data['egfr'] = (120 - age_factor * 30 - kidney_risk_score * 40 + np.random.normal(0, 15, n_samples)).clip(15, 130)
         
-        # Generate target variables based on risk scores
-        data['diabetes_risk'] = self._generate_outcome(diabetes_risk_score, disease_prevalence['diabetes'])
-        data['cvd_risk'] = self._generate_outcome(cvd_risk_score, disease_prevalence['cvd'])
-        data['kidney_disease_risk'] = self._generate_outcome(kidney_risk_score, disease_prevalence['kidney_disease'])
+        # ===== GENERATE OUTCOMES BASED ON ACTUAL LAB VALUES (CRITICAL FIX) =====
+        # Calculate FINAL risk scores that include the actual lab values
+        # This ensures the model learns the relationship between labs and outcomes
+        
+        # Diabetes final risk score - heavily influenced by glucose and HbA1c
+        diabetes_final_score = np.zeros(n_samples)
+        # Base risk factors (reduced to give more weight to labs)
+        diabetes_final_score += diabetes_risk_score * 0.25
+        # Fasting glucose contribution (> 100 = prediabetic, > 126 = diabetic)
+        glucose_arr = np.array(data['fasting_glucose'])
+        diabetes_final_score += np.where(glucose_arr >= 126, 0.45, 
+                                         np.where(glucose_arr >= 100, (glucose_arr - 100) / 60, 0))
+        # HbA1c contribution (> 5.7 = prediabetic, > 6.5 = diabetic) - THIS IS KEY
+        hba1c_arr = np.array(data['hba1c'])
+        diabetes_final_score += np.where(hba1c_arr >= 6.5, 0.50,
+                                         np.where(hba1c_arr >= 5.7, (hba1c_arr - 5.7) / 2.0, 0))
+        # BMI contribution for diabetes
+        bmi_arr = np.array(data['bmi'])
+        diabetes_final_score += np.where(bmi_arr >= 30, 0.15,
+                                         np.where(bmi_arr >= 25, (bmi_arr - 25) / 50, 0))
+        
+        # CVD final risk score - influenced by cholesterol, BP
+        cvd_final_score = np.zeros(n_samples)
+        # Base risk factors
+        cvd_final_score += cvd_risk_score * 0.25
+        # Total cholesterol contribution (> 200 = borderline, > 240 = high)
+        tc_arr = np.array(data['total_cholesterol'])
+        cvd_final_score += np.where(tc_arr >= 240, 0.25, 
+                                    np.where(tc_arr >= 200, (tc_arr - 200) / 160, 0))
+        # LDL contribution (> 130 = borderline, > 160 = high)
+        ldl_arr = np.array(data['ldl_cholesterol'])
+        cvd_final_score += np.where(ldl_arr >= 160, 0.25,
+                                    np.where(ldl_arr >= 130, (ldl_arr - 130) / 120, 0))
+        # Low HDL is a major risk factor (< 40 is very low)
+        hdl_arr = np.array(data['hdl_cholesterol'])
+        cvd_final_score += np.where(hdl_arr < 40, 0.30,
+                                    np.where(hdl_arr < 50, (50 - hdl_arr) / 35, 0))
+        # High triglycerides (> 150 = borderline, > 200 = high)
+        trig_arr = np.array(data['triglycerides'])
+        cvd_final_score += np.where(trig_arr >= 200, 0.20,
+                                    np.where(trig_arr >= 150, (trig_arr - 150) / 250, 0))
+        # Blood pressure contribution (Stage 2 hypertension)
+        systolic_arr = np.array(data['systolic_bp'])
+        cvd_final_score += np.where(systolic_arr >= 140, 0.20,
+                                    np.where(systolic_arr >= 130, (systolic_arr - 130) / 50, 0))
+        
+        # Kidney disease final risk score - influenced by eGFR and creatinine
+        kidney_final_score = np.zeros(n_samples)
+        # Base risk factors
+        kidney_final_score += kidney_risk_score * 0.30
+        # eGFR contribution (< 60 = moderate CKD, < 30 = severe)
+        egfr_arr = np.array(data['egfr'])
+        kidney_final_score += np.where(egfr_arr < 30, 0.50,
+                                       np.where(egfr_arr < 60, (60 - egfr_arr) / 60,
+                                                np.where(egfr_arr < 90, (90 - egfr_arr) / 150, 0)))
+        # Creatinine contribution (> 1.3 elevated)
+        creat_arr = np.array(data['creatinine'])
+        kidney_final_score += np.where(creat_arr >= 2.0, 0.35,
+                                       np.where(creat_arr >= 1.3, (creat_arr - 1.3) / 2, 0))
+        
+        # Generate target variables based on FINAL risk scores (includes lab values)
+        data['diabetes_risk'] = self._generate_outcome(diabetes_final_score.clip(0, 1), disease_prevalence['diabetes'])
+        data['cvd_risk'] = self._generate_outcome(cvd_final_score.clip(0, 1), disease_prevalence['cvd'])
+        data['kidney_disease_risk'] = self._generate_outcome(kidney_final_score.clip(0, 1), disease_prevalence['kidney_disease'])
         
         df = pd.DataFrame(data)
         
@@ -292,39 +352,83 @@ class DataIngestion:
     
     def _calculate_raw_risk_score(self, data: Dict, disease: str) -> np.ndarray:
         """
-        Calculate a raw risk score based on known risk factors.
-        Used internally for generating correlated synthetic data.
+        Calculate a raw risk score based on known clinical risk factors.
+        Uses evidence-based weightings for different disease types.
+        
+        This comprehensive scoring includes:
+        - Demographics (age, gender)
+        - Vitals (blood pressure, BMI)
+        - Laboratory values (glucose, HbA1c, cholesterol, kidney function)
+        - Lifestyle factors (smoking, physical activity)
+        - Medical history (family history, diagnosed conditions)
         """
         n = len(data['age'])
         score = np.zeros(n)
         
-        # Age contribution
-        age_contrib = (np.array(data['age']) - 30) / 50
-        score += age_contrib * 0.3
+        # ===== DEMOGRAPHIC FACTORS =====
+        # Age contribution (exponential increase after 40)
+        age_arr = np.array(data['age'])
+        age_contrib = np.where(age_arr > 40, 
+                               (age_arr - 40) / 40,  # Higher weight for ages > 40
+                               (age_arr - 18) / 80)  # Lower weight for younger
+        score += age_contrib * 0.20
         
-        # BMI contribution
-        bmi_contrib = (np.array(data['bmi']) - 22) / 20
-        score += bmi_contrib * 0.2
+        # ===== BMI CONTRIBUTION =====
+        # BMI > 25 = overweight, > 30 = obese (high risk)
+        bmi_arr = np.array(data['bmi'])
+        bmi_contrib = np.zeros(n)
+        bmi_contrib = np.where(bmi_arr >= 30, (bmi_arr - 25) / 15, bmi_contrib)  # Obese
+        bmi_contrib = np.where((bmi_arr >= 25) & (bmi_arr < 30), (bmi_arr - 25) / 20, bmi_contrib)  # Overweight
+        bmi_contrib = np.where(bmi_arr < 18.5, 0.1, bmi_contrib)  # Underweight also a risk
+        score += bmi_contrib * 0.20
         
-        # Blood pressure contribution
-        bp_contrib = (np.array(data['systolic_bp']) - 110) / 80
-        score += bp_contrib * 0.15
+        # ===== BLOOD PRESSURE CONTRIBUTION =====
+        # Normal < 120/80, Elevated 120-129/80, High Stage 1: 130-139/80-89, Stage 2: >= 140/90
+        systolic_arr = np.array(data['systolic_bp'])
+        diastolic_arr = np.array(data['diastolic_bp'])
+        bp_contrib = np.zeros(n)
+        bp_contrib = np.where(systolic_arr >= 140, (systolic_arr - 120) / 60, bp_contrib)  # Stage 2 hypertension
+        bp_contrib = np.where((systolic_arr >= 130) & (systolic_arr < 140), (systolic_arr - 120) / 80, bp_contrib)  # Stage 1
+        bp_contrib = np.where((systolic_arr >= 120) & (systolic_arr < 130), 0.05, bp_contrib)  # Elevated
+        # Add diastolic contribution
+        bp_contrib += np.where(diastolic_arr >= 90, (diastolic_arr - 80) / 40, 0)
+        score += bp_contrib.clip(0, 0.4) * 0.20
         
-        # Smoking contribution
-        smoking_map = {'Never': 0, 'Former': 0.5, 'Current': 1.0}
-        smoking_contrib = np.array([smoking_map[s] for s in data['smoking_status']])
-        score += smoking_contrib * 0.15
+        # ===== SMOKING CONTRIBUTION =====
+        smoking_map = {'Never': 0, 'Former': 0.3, 'Current': 1.0}
+        smoking_contrib = np.array([smoking_map.get(s, 0) for s in data['smoking_status']])
+        score += smoking_contrib * 0.10
         
-        # Family history
+        # ===== PHYSICAL ACTIVITY (PROTECTIVE FACTOR) =====
+        activity_map = {'Sedentary': 0.15, 'Light': 0.05, 'Moderate': -0.05, 'Active': -0.10}
+        activity_contrib = np.array([activity_map.get(a, 0) for a in data['physical_activity_level']])
+        score += activity_contrib
+        
+        # ===== DISEASE-SPECIFIC FACTORS =====
         if disease == 'diabetes':
-            score += np.array(data['family_history_diabetes']) * 0.2
+            # Family history is a strong predictor
+            score += np.array(data['family_history_diabetes']) * 0.25
+            # Hypertension increases diabetes risk
+            score += np.array(data['hypertension_diagnosed']) * 0.10
+            
         elif disease == 'cvd':
-            score += np.array(data['family_history_cvd']) * 0.2
-        else:
-            score += np.array(data['family_history_kidney_disease']) * 0.2
+            # Family history
+            score += np.array(data['family_history_cvd']) * 0.25
+            # Previous CV event is major risk factor
+            score += np.array(data['previous_cardiovascular_event']) * 0.30
+            # Hypertension
+            score += np.array(data['hypertension_diagnosed']) * 0.15
+            
+        else:  # kidney disease
+            # Family history
+            score += np.array(data['family_history_kidney_disease']) * 0.20
+            # Hypertension damages kidneys
+            score += np.array(data['hypertension_diagnosed']) * 0.20
+            # Diabetes also damages kidneys
+            score += np.array(data['family_history_diabetes']) * 0.10
         
-        # Add noise
-        score += np.random.normal(0, 0.15, n)
+        # Add some noise
+        score += np.random.normal(0, 0.08, n)
         
         return score.clip(0, 1)
     

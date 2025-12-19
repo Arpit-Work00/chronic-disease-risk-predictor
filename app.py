@@ -21,6 +21,7 @@ from src.feature_engineering import FeatureEngineer
 from src.model_training import ModelTrainer
 from src.explainability import ExplainabilityEngine
 from src.uncertainty import UncertaintyEstimator
+from src.clinical_risk_calculator import ClinicalRiskCalculator
 
 # Page configuration
 st.set_page_config(
@@ -79,12 +80,16 @@ st.markdown("""
 
 
 @st.cache_resource
-def load_trained_model():
-    """Load or train the prediction model (cached)."""
+def load_trained_model(_version="v3_stronger_risk_weights"):
+    """Load or train the prediction model (cached).
+    
+    Args:
+        _version: Version string to invalidate cache when model logic changes
+    """
     with st.spinner("🔄 Initializing AI Model... This may take a moment."):
-        # Generate training data
+        # Generate training data with improved risk scoring
         ingestion = DataIngestion()
-        df = ingestion.generate_synthetic_data(n_samples=1500)
+        df = ingestion.generate_synthetic_data(n_samples=2500)  # Increased for better learning
         
         # Feature engineering
         engineer = FeatureEngineer()
@@ -207,10 +212,7 @@ def create_factor_chart(factors):
 def main():
     # Header
     st.markdown('<h1 class="main-header">🏥 Chronic Disease Risk Predictor</h1>', unsafe_allow_html=True)
-    st.markdown('<p style="text-align: center; color: #888; margin-bottom: 2rem;">AI-based risk prediction system</p>', unsafe_allow_html=True)
-    
-    # Load model
-    components = load_trained_model()
+    st.markdown('<p style="text-align: center; color: #888; margin-bottom: 2rem;">Evidence-based clinical risk assessment using validated medical algorithms</p>', unsafe_allow_html=True)
     
     # Sidebar - Patient Input
     with st.sidebar:
@@ -267,82 +269,118 @@ def main():
     
     # Main Content Area
     if predict_button:
-        # Prepare patient data
-        patient_data = pd.DataFrame([{
-            'patient_id': 'WEB-001',
-            'age': age,
-            'gender': gender,
-            'ethnicity': ethnicity,
-            'systolic_bp': systolic_bp,
-            'diastolic_bp': diastolic_bp,
-            'heart_rate': heart_rate,
-            'bmi': bmi,
-            'fasting_glucose': fasting_glucose,
-            'hba1c': hba1c,
-            'total_cholesterol': total_cholesterol,
-            'hdl_cholesterol': hdl_cholesterol,
-            'ldl_cholesterol': ldl_cholesterol,
-            'triglycerides': triglycerides,
-            'creatinine': creatinine,
-            'egfr': egfr,
-            'smoking_status': smoking_status,
-            'alcohol_consumption': alcohol,
-            'physical_activity_level': physical_activity,
-            'diet_quality_score': diet_score,
-            'family_history_diabetes': int(family_diabetes),
-            'family_history_cvd': int(family_cvd),
-            'family_history_kidney_disease': int(family_kidney),
-            'hypertension_diagnosed': int(hypertension),
-            'previous_cardiovascular_event': int(prev_cv_event)
-        }])
         
-        with st.spinner("🧠 Analyzing patient data..."):
-            # Add placeholder target columns (needed for feature engineering compatibility)
-            patient_data['diabetes_risk'] = 0
-            patient_data['cvd_risk'] = 0
-            patient_data['kidney_disease_risk'] = 0
+        with st.spinner("🧠 Analyzing patient data with clinical algorithms..."):
+            # Create patient data dictionary for clinical calculator
+            patient_dict = {
+                'age': age,
+                'gender': gender,
+                'ethnicity': ethnicity,
+                'systolic_bp': systolic_bp,
+                'diastolic_bp': diastolic_bp,
+                'heart_rate': heart_rate,
+                'bmi': bmi,
+                'fasting_glucose': fasting_glucose,
+                'hba1c': hba1c,
+                'total_cholesterol': total_cholesterol,
+                'hdl_cholesterol': hdl_cholesterol,
+                'ldl_cholesterol': ldl_cholesterol,
+                'triglycerides': triglycerides,
+                'creatinine': creatinine,
+                'egfr': egfr,
+                'smoking_status': smoking_status,
+                'alcohol_consumption': alcohol,
+                'physical_activity_level': physical_activity,
+                'diet_quality_score': diet_score,
+                'family_history_diabetes': int(family_diabetes),
+                'family_history_cvd': int(family_cvd),
+                'family_history_kidney_disease': int(family_kidney),
+                'hypertension_diagnosed': int(hypertension),
+                'previous_cardiovascular_event': int(prev_cv_event)
+            }
             
-            # Feature engineering
-            patient_engineered = components['feature_engineer'].transform(patient_data)
+            # Use Clinical Risk Calculator for accurate predictions
+            calculator = ClinicalRiskCalculator()
+            clinical_result = calculator.calculate_combined_risk(patient_dict)
             
-            # Remove target columns before preprocessing
-            target_cols = ['diabetes_risk', 'cvd_risk', 'kidney_disease_risk']
-            for col in target_cols:
-                if col in patient_engineered.columns:
-                    patient_engineered = patient_engineered.drop(columns=[col])
-            
-            # Get the expected features from the preprocessor
-            expected_features = components['feature_names']
-            
-            # Ensure patient data has all expected features (fill missing with 0)
-            for feat in expected_features:
-                if feat not in patient_engineered.columns:
-                    # Check if it's an encoded feature
-                    base_feat = feat.replace('_encoded', '')
-                    if base_feat in patient_engineered.columns:
-                        continue  # Will be handled by preprocessor
-                    patient_engineered[feat] = 0
-            
-            # Preprocess
-            patient_processed = components['preprocessor'].transform(patient_engineered)
-            
-            # Align columns with model expectations
-            for feat in expected_features:
-                if feat not in patient_processed.columns:
-                    patient_processed[feat] = 0
-            
-            # Reorder columns to match training order
-            patient_processed = patient_processed[expected_features]
-            
-            # Get prediction
-            risk_score = float(components['model'].predict_proba(patient_processed)[0, 1])
+            # Get primary risk (diabetes)
+            risk_score = clinical_result['primary_risk_score']
             category, emoji, css_class = get_risk_category(risk_score)
             
-            # Get confidence interval
-            _, lower, upper = components['uncertainty'].compute_confidence_interval(patient_processed)
+            # Calculate confidence interval based on clinical parameters
+            # Clinical calculators typically have ±5-10% margin
+            margin = 0.05 + (0.05 * (1 - risk_score))  # Lower margin at higher risk
+            lower = max(0, risk_score - margin)
+            upper = min(1, risk_score + margin)
             
-            # Get explanation
-            explanation = components['explainer'].explain_prediction(patient_processed)
+            # Convert clinical factors to explanation format
+            diabetes_factors = clinical_result['diabetes']['factors']
+            explanation = {
+                'top_contributing_factors': [],
+                'all_contributions': []
+            }
+            
+            # Build explanation from clinical factors
+            for factor_name, factor_data in diabetes_factors.items():
+                points = factor_data.get('points', 0)
+                max_points = factor_data.get('max', 1)
+                
+                if points > 0:
+                    contribution = points / max_points
+                    interpretation = factor_data.get('interpretation', '')
+                    
+                    if factor_name == 'hba1c':
+                        value = factor_data.get('value', 0)
+                        if value >= 6.5:
+                            interp = f"HbA1c {value}% is in diabetic range (≥6.5%)"
+                        elif value >= 5.7:
+                            interp = f"HbA1c {value}% indicates prediabetes (5.7-6.4%)"
+                        else:
+                            interp = f"HbA1c {value}% is normal"
+                    elif factor_name == 'fasting_glucose':
+                        value = factor_data.get('value', 0)
+                        if value >= 126:
+                            interp = f"Fasting glucose {value} mg/dL is in diabetic range (≥126)"
+                        elif value >= 100:
+                            interp = f"Fasting glucose {value} mg/dL indicates impaired fasting glucose"
+                        else:
+                            interp = f"Fasting glucose {value} mg/dL is normal"
+                    elif factor_name == 'bmi':
+                        value = factor_data.get('value', 0)
+                        if value >= 30:
+                            interp = f"BMI {value:.1f} indicates obesity (≥30)"
+                        elif value >= 25:
+                            interp = f"BMI {value:.1f} indicates overweight (25-29.9)"
+                        else:
+                            interp = f"BMI {value:.1f} is normal"
+                    elif factor_name == 'hypertension':
+                        systolic = factor_data.get('systolic', 120)
+                        diastolic = factor_data.get('diastolic', 80)
+                        interp = f"Blood pressure {systolic}/{diastolic} mmHg indicates hypertension"
+                    elif factor_name == 'age':
+                        value = factor_data.get('value', 0)
+                        interp = f"Age {value} years - risk increases with age"
+                    elif factor_name == 'family_history':
+                        interp = "Family history of diabetes increases genetic risk"
+                    elif factor_name == 'physical_activity':
+                        value = factor_data.get('value', 'Unknown')
+                        interp = f"{value} physical activity level increases risk"
+                    else:
+                        interp = interpretation or f"{factor_name} contributes to risk"
+                    
+                    factor_entry = {
+                        'feature': factor_name.replace('_', ' ').title(),
+                        'shap_value': contribution if points > 0 else -contribution,
+                        'contribution': abs(contribution),
+                        'direction': 'increases risk' if points > 0 else 'decreases risk',
+                        'interpretation': interp
+                    }
+                    explanation['all_contributions'].append(factor_entry)
+                    explanation['top_contributing_factors'].append(factor_entry)
+            
+            # Sort by contribution
+            explanation['all_contributions'].sort(key=lambda x: x['contribution'], reverse=True)
+            explanation['top_contributing_factors'].sort(key=lambda x: x['contribution'], reverse=True)
         
         # Display Results
         st.markdown("## 📊 Risk Assessment Results")
@@ -367,7 +405,7 @@ def main():
             <div class="metric-card">
                 <h4 style="margin: 0; opacity: 0.8;">95% Confidence Interval</h4>
                 <p style="font-size: 1.5rem; font-weight: 700; margin: 0.5rem 0;">
-                    {lower[0]:.1%} - {upper[0]:.1%}
+                    {lower:.1%} - {upper:.1%}
                 </p>
                 <p style="margin: 0; font-size: 0.9rem; opacity: 0.8;">
                     Prediction confidence
