@@ -286,18 +286,6 @@ This risk prediction system is intended to **support clinical decision-making** 
 
 ---
 
-## 📄 License
-
-MIT License - see LICENSE file for details.
-
----
-
-## 🤝 Contributing
-
-Contributions are welcome! Please read our contributing guidelines before submitting pull requests.
-
----
-
 ## 📧 Contact
 
 For questions or support, please open an issue on GitHub.
