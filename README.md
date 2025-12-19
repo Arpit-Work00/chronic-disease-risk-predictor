@@ -1,5 +1,9 @@
 # AI-Based Risk Prediction System for Chronic Diseases
 
+[![Streamlit App](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://chronic-disease-risk-predictor.streamlit.app)
+
+### 🚀 [Live Demo](https://chronic-disease-risk-predictor.streamlit.app) — Try the interactive risk prediction app!
+
 A comprehensive, modular AI system for predicting the risk of chronic diseases (diabetes, cardiovascular disease, kidney failure) from structured clinical and lifestyle data. Built with a focus on **interpretability**, **clinical trust**, **uncertainty quantification**, and **bias/fairness analysis**.
 
 ---
